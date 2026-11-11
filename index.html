@@ -177,6 +177,13 @@ canvas{
 .backup .row{display:flex;gap:8px;flex-wrap:wrap}
 .backup strong{color:var(--ink);font-size:15px}
 .scrim{display:none}
+.backup select{height:42px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:0 8px;font-size:16px;color:var(--ink)}
+.backup label{display:flex;align-items:center;gap:8px;font-size:14px}
+.nudge{max-width:1052px;margin:14px auto 0;border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:12px 14px;display:flex;gap:10px 16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.nudge[hidden]{display:none}
+.nudge .row{display:flex;gap:8px}
+@media (max-width: 1100px){ .nudge{margin:14px 24px 0} }
+@media (max-width: 899px){ .nudge{margin:12px 16px 0} }
 .tabs{display:flex;gap:10px;align-items:center;justify-content:space-between;max-width:1100px;margin:0 auto;padding:14px 24px 0}
 .page[hidden]{display:none}
 .page.wide{max-width:1100px}
@@ -276,12 +283,28 @@ canvas{
       <button class="btn" id="backup-save" type="button">Save a backup</button>
       <button class="btn" id="backup-load" type="button">Restore</button>
     </span>
+    <span id="backup-last">Last backup: never</span>
+    <label for="remind">Remind me
+      <select id="remind">
+        <option value="1">every day</option>
+        <option value="7" selected>every week</option>
+        <option value="30">every month</option>
+        <option value="0">never</option>
+      </select>
+    </label>
     <input type="file" id="backup-file" accept="application/json,.json" hidden>
   </div>
 </aside>
 <button class="scrim" id="scrim" aria-label="Close calendar"></button>
 
 <main id="main">
+  <div class="nudge" id="nudge" hidden>
+    <span id="nudge-text"></span>
+    <span class="row">
+      <button class="btn primary" id="nudge-save" type="button">Save a backup</button>
+      <button class="btn" id="nudge-later" type="button">Later</button>
+    </span>
+  </div>
   <nav class="tabs" aria-label="Views">
     <button class="btn cal-toggle" id="cal-open" type="button">Calendar</button>
     <div class="group">
@@ -494,7 +517,11 @@ function openIdb(){
 
 /* one write at a time per document, coalesced */
 var pending = new Map(), saveError = '';
+var DAY_MS = 86400000;
+var meta = { last: 0, every: 7, snooze: 0, c: 0 };   // backup reminder state; never part of a backup file
+function metaDoc(){ return { last: meta.last, every: meta.every, snooze: meta.snooze, c: meta.c }; }
 function save(id, value){
+  if (id !== 'meta' && !meta.c){ meta.c = 1; save('meta', metaDoc()); }
   var p = pending.get(id) || { busy:false };
   p.value = value; p.dirty = true;
   clearTimeout(p.timer);
@@ -1072,6 +1099,7 @@ new MutationObserver(queueSize).observe(document.documentElement, { attributes: 
 
 document.addEventListener('visibilitychange', function(){
   if (document.hidden){ hiddenAt = Date.now(); flushAll(); return; }
+  if (backend){ showBackupInfo(); nudge(); }
   /* Coming back after a while: pick up anything written on another device. */
   if (backend && backend.kind === 'remote' && hiddenAt && Date.now() - hiddenAt > 60000 && !hasPending() && !active){
     days.clear(); loadIndex().then(function(){ openDay(cur); });
@@ -1093,7 +1121,43 @@ function whenSaved(){
   flushAll();
   return new Promise(function(res){ (function wait(){ if (hasPending()) setTimeout(wait, 100); else res(); })(); });
 }
-$('#backup-save').addEventListener('click', function(){
+function loadMeta(){
+  return backend.get('meta').then(function(m){
+    if (m && typeof m === 'object'){
+      meta.last = +m.last || 0; meta.snooze = +m.snooze || 0; meta.c = m.c ? 1 : 0;
+      meta.every = [0, 1, 7, 30].indexOf(+m.every) >= 0 ? +m.every : 7;
+    }
+  }).catch(function(){}).then(function(){ $('#remind').value = String(meta.every); showBackupInfo(); });
+}
+function agoText(){
+  if (!meta.last) return 'never';
+  var a = new Date(meta.last), b = new Date();
+  var n = Math.round((new Date(b.getFullYear(), b.getMonth(), b.getDate()) - new Date(a.getFullYear(), a.getMonth(), a.getDate())) / DAY_MS);
+  return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
+}
+function showBackupInfo(){ $('#backup-last').textContent = 'Last backup: ' + agoText(); }
+/* Ask for a backup when one is due, there is something new to save, and the reminder has not been postponed. */
+function nudge(){
+  var now = Date.now();
+  var due = meta.every > 0 && meta.c && Object.keys(index).length > 0 && now - meta.last > meta.every * DAY_MS && now > meta.snooze;
+  $('#nudge').hidden = !due;
+  if (due) $('#nudge-text').textContent = meta.last
+    ? 'Your last backup was ' + agoText() + '. Save a new one so nothing is lost.'
+    : 'You have not saved a backup yet. Your daybook exists only on this device.';
+}
+function backedUp(){
+  meta.last = Date.now(); meta.c = 0; meta.snooze = 0;
+  save('meta', metaDoc()); showBackupInfo(); nudge();
+  toast('Backup saved.');
+}
+function download(json, name){
+  var url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  var a = document.createElement('a'); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  backedUp();
+}
+function doBackup(){
   if (!backend) return;
   whenSaved().then(allDocs).then(function(docs){
     var json = JSON.stringify({ app: 'daybook', v: 1, exported: new Date().toISOString(), docs: docs });
@@ -1101,14 +1165,23 @@ $('#backup-save').addEventListener('click', function(){
     var file = null;
     try { file = new File([json], name, { type: 'application/json' }); } catch(e){}
     if (file && navigator.canShare && navigator.canShare({ files: [file] })){
-      navigator.share({ files: [file] }).catch(function(){});
+      /* The share sheet reports success once the file has been handed over; closing it without saving does not count. */
+      navigator.share({ files: [file] }).then(backedUp, function(e){
+        if (e && e.name === 'AbortError') return;
+        download(json, name);
+      });
       return;
     }
-    var url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-    var a = document.createElement('a'); a.href = url; a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    download(json, name);
   }).catch(function(){ toast('The backup could not be made. Try again.'); });
+}
+$('#backup-save').addEventListener('click', doBackup);
+$('#nudge-save').addEventListener('click', doBackup);
+$('#nudge-later').addEventListener('click', function(){
+  meta.snooze = Date.now() + DAY_MS; save('meta', metaDoc()); nudge();
+});
+$('#remind').addEventListener('change', function(){
+  meta.every = +this.value; meta.snooze = 0; save('meta', metaDoc()); nudge();
 });
 $('#backup-load').addEventListener('click', function(){ $('#backup-file').click(); });
 $('#backup-file').addEventListener('change', function(){
@@ -1135,7 +1208,7 @@ $('#backup-file').addEventListener('change', function(){
 openIdb().then(function(idb){ return idbBackend(idb); }, function(){ return localBackend; }).then(function(b){
   backend = b; showStatus();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
-  return loadIndex().then(function(){ return openDay(cur); });
+  return loadMeta().then(loadIndex).then(function(){ nudge(); return openDay(cur); });
 });
 
 if ('serviceWorker' in navigator){
