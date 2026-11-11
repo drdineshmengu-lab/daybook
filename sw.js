@@ -1,5 +1,5 @@
 /* Daybook offline cache. Bump VERSION whenever the app files change. */
-var VERSION = 'daybook-v1';
+var VERSION = 'daybook-v2';
 var SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
