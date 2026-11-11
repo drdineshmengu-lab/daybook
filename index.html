@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daybook</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Daybook">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#eef2f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#11181b" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+/* Layout idea: calendar rail on the left, one day's page on the right (tasks, typed notes, ruled handwriting sheets). */
+:root{
+  --bg:#eef2f1;
+  --paper:#fbfdfc;
+  --ink:#1b2a31;
+  --muted:#5d6e75;
+  --line:#d3dcda;
+  --rule:#dfe7e5;
+  --accent:#0e6f69;
+  --accent-soft:#d9ecea;
+  --on-accent:#ffffff;
+  --warn:#a8451f;
+  --ink0:#1b2a31; --ink1:#1f5fbf; --ink2:#c0392b; --ink3:#1e7d4f;
+  --display:"Avenir Next","Avenir",ui-rounded,-apple-system,"Segoe UI",sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11181b; --paper:#192327; --ink:#e3ecec; --muted:#90a2a8; --line:#2b383d; --rule:#243136;
+    --accent:#56c6bd; --accent-soft:#1d3b3b; --on-accent:#0c1a1b; --warn:#f0a07c;
+    --ink0:#e3ecec; --ink1:#82b4ff; --ink2:#ff8f80; --ink3:#72d6a3;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11181b; --paper:#192327; --ink:#e3ecec; --muted:#90a2a8; --line:#2b383d; --rule:#243136;
+  --accent:#56c6bd; --accent-soft:#1d3b3b; --on-accent:#0c1a1b; --warn:#f0a07c;
+  --ink0:#e3ecec; --ink1:#82b4ff; --ink2:#ff8f80; --ink3:#72d6a3;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.45;
+  display:grid;grid-template-columns:316px minmax(0,1fr);overflow:hidden;
+  -webkit-text-size-adjust:100%;
+}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- calendar rail ---------- */
+.side{
+  background:var(--paper);border-right:1px solid var(--line);padding:22px 18px;
+  display:flex;flex-direction:column;gap:20px;overflow-y:auto;min-height:0;
+}
+.brand{font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:-.01em;display:flex;justify-content:space-between;align-items:center}
+.brand .close{display:none}
+.cal-head{display:flex;align-items:center;gap:6px}
+.cal-title{font-family:var(--display);font-weight:700;font-size:19px;flex:1}
+.icon-btn{
+  width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:transparent;
+  display:grid;place-items:center;font-size:20px;line-height:1;
+}
+.icon-btn:hover{background:var(--accent-soft)}
+.dow,.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.dow span{text-align:center;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;padding:4px 0}
+.cell{
+  border:1px solid transparent;background:transparent;border-radius:10px;height:46px;padding:5px 0 0;
+  display:flex;flex-direction:column;align-items:center;gap:3px;font-variant-numeric:tabular-nums;font-weight:500;
+}
+.cell:hover{background:var(--accent-soft)}
+.cell.out{color:var(--muted);opacity:.55}
+.cell.today{border-color:var(--accent);color:var(--accent);font-weight:600}
+.cell.sel{background:var(--accent);color:var(--on-accent);border-color:var(--accent);opacity:1}
+.marks{display:flex;align-items:center;gap:3px;height:6px}
+.bar{width:16px;height:4px;border-radius:2px;background:var(--line);overflow:hidden;display:block}
+.bar b{display:block;height:100%;background:var(--accent)}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--ink1);display:block}
+.cell.sel .bar{background:color-mix(in srgb,var(--on-accent) 35%,transparent)}
+.cell.sel .bar b,.cell.sel .dot{background:var(--on-accent)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.goto{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted)}
+.goto-row{display:flex;gap:8px}
+.goto input{flex:1;min-width:0;height:42px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:0 10px;font-size:16px}
+.btn{
+  height:42px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:transparent;font-weight:600;font-size:15px;white-space:nowrap;
+}
+.btn:hover{background:var(--accent-soft)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.month-stats{border-top:1px solid var(--line);padding-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat b{display:block;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat span{font-size:13px;color:var(--muted)}
+
+/* ---------- day page ---------- */
+main{overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch}
+.page{max-width:860px;margin:0 auto;padding:22px 24px 80px;display:flex;flex-direction:column;gap:26px}
+.day-head{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.day-head .titles{flex:1;min-width:220px}
+.weekday{font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,4.4vw,40px);letter-spacing:-.02em;line-height:1.05;margin:2px 0 0;text-wrap:balance}
+.day-nav{display:flex;gap:6px;align-items:center}
+.cal-toggle{display:none}
+.meta{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:14px;color:var(--muted);margin-top:8px}
+.status{display:inline-flex;align-items:center;gap:6px}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.status.busy::before{background:var(--muted)}
+.status.bad{color:var(--warn)}
+.status.bad::before{background:var(--warn)}
+.banner{border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:12px 14px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.banner[hidden]{display:none}
+h2{font-family:var(--display);font-weight:700;font-size:20px;margin:0}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.sec-head small{color:var(--muted);font-size:14px}
+.day-body{display:flex;flex-direction:column;gap:26px;transition:opacity .15s}
+.is-loading .day-body{opacity:.35;pointer-events:none}
+
+.tasks{list-style:none;margin:0;padding:0;background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tasks li{display:flex;align-items:center;gap:10px;padding:6px 8px 6px 14px;border-bottom:1px solid var(--rule)}
+.tasks li.empty{color:var(--muted);padding:14px;font-size:15px}
+.tasks input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent);flex:none;margin:0}
+.tasks input[type=text]{flex:1;min-width:0;border:0;background:transparent;height:40px;font-size:17px;padding:0 4px;border-radius:6px}
+.tasks li.done input[type=text]{text-decoration:line-through;color:var(--muted)}
+.del{width:36px;height:36px;border:0;background:transparent;border-radius:8px;color:var(--muted);font-size:20px;flex:none}
+.del:hover{background:var(--accent-soft);color:var(--ink)}
+.add{display:flex;gap:8px;padding:8px 8px 8px 14px;background:var(--paper)}
+.add input{flex:1;min-width:0;height:42px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:0 12px;font-size:17px}
+textarea{
+  width:100%;min-height:120px;resize:none;border:1px solid var(--line);border-radius:12px;background:var(--paper);
+  padding:14px 16px;font-size:17px;line-height:1.6;display:block;overflow:hidden;
+}
+
+.tools{
+  position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0;margin:0 0 4px;
+  display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border-bottom:1px solid var(--line);
+}
+.group{display:flex;gap:6px;align-items:center}
+.seg{height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--paper);font-weight:600;font-size:15px}
+.seg[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.sw,.sz{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--paper);display:grid;place-items:center;padding:0}
+.sw i{width:22px;height:22px;border-radius:50%;display:block}
+.sz i{border-radius:50%;background:var(--ink);display:block}
+.sw[aria-pressed=true],.sz[aria-pressed=true]{border:2px solid var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:500;min-height:40px}
+.switch input{width:22px;height:22px;accent-color:var(--accent);margin:0}
+.hint{font-size:14px;color:var(--muted);margin:6px 0 12px;max-width:65ch}
+.sheets{display:flex;flex-direction:column;gap:18px}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--muted);margin-bottom:6px}
+.link{border:0;background:transparent;color:var(--accent);font-weight:600;font-size:14px;padding:8px 4px;border-radius:6px}
+.sheet{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.sheet::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(to bottom,transparent calc(100% - 1px),var(--rule) calc(100% - 1px));
+  background-size:100% calc(100% / 26);
+}
+.sheet::after{content:"";position:absolute;top:0;bottom:0;left:7%;width:1px;background:var(--ink2);opacity:.28;pointer-events:none}
+canvas{
+  position:relative;display:block;width:100%;aspect-ratio:1000/1300;touch-action:pan-y pinch-zoom;cursor:crosshair;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
+}
+.finger canvas{touch-action:none}
+.sheet-foot{display:flex;gap:8px;flex-wrap:wrap}
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:10px 16px;border-radius:10px;font-size:15px;z-index:30;max-width:calc(100% - 32px);
+}
+.toast[hidden]{display:none}
+.backup{border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--muted)}
+.backup .row{display:flex;gap:8px;flex-wrap:wrap}
+.backup strong{color:var(--ink);font-size:15px}
+.scrim{display:none}
+
+@media (max-width: 899px){
+  body{grid-template-columns:minmax(0,1fr)}
+  .side{position:fixed;inset:0 auto 0 0;width:min(340px,88vw);z-index:20;transform:translateX(-102%);transition:transform .2s;box-shadow:0 0 40px rgba(0,0,0,.25)}
+  .cal-open .side{transform:none}
+  .cal-open .scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:15;border:0;width:100%;height:100%}
+  .cal-toggle{display:inline-block}
+  .brand .close{display:grid}
+  .page{padding:16px 16px 80px}
+}
+@media (prefers-reduced-motion: reduce){ .side,.day-body{transition:none} }
+</style>
+</head>
+<body>
+
+<aside class="side" id="side" aria-label="Calendar">
+  <div class="brand">Daybook <button class="icon-btn close" id="cal-close" aria-label="Close calendar">×</button></div>
+
+  <div>
+    <div class="cal-head">
+      <div class="cal-title" id="cal-title" aria-live="polite"></div>
+      <button class="icon-btn" id="prev-month" aria-label="Previous month">‹</button>
+      <button class="icon-btn" id="next-month" aria-label="Next month">›</button>
+    </div>
+    <div class="dow" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="bar"><b style="width:60%"></b></i> Tasks done</span>
+    <span><i class="dot"></i> Notes or handwriting</span>
+  </div>
+
+  <label class="goto" for="goto-date">Go to a date
+    <span class="goto-row">
+      <input type="date" id="goto-date">
+      <button class="btn" id="goto-today" type="button">Today</button>
+    </span>
+  </label>
+
+  <div class="month-stats">
+    <div class="stat"><b id="stat-days">0</b><span>days written this month</span></div>
+    <div class="stat"><b id="stat-tasks">0 / 0</b><span>tasks done this month</span></div>
+  </div>
+  <div class="backup">
+    <strong>Backup</strong>
+    <span>Your daybook is stored on this device only. Save a backup file now and then so nothing is lost.</span>
+    <span class="row">
+      <button class="btn" id="backup-save" type="button">Save a backup</button>
+      <button class="btn" id="backup-load" type="button">Restore</button>
+    </span>
+    <input type="file" id="backup-file" accept="application/json,.json" hidden>
+  </div>
+</aside>
+<button class="scrim" id="scrim" aria-label="Close calendar"></button>
+
+<main id="main">
+  <div class="page">
+    <header>
+      <div class="day-head">
+        <div class="titles">
+          <div class="weekday" id="weekday"></div>
+          <h1 id="date-title"></h1>
+        </div>
+        <div class="day-nav">
+          <button class="btn cal-toggle" id="cal-open" type="button">Calendar</button>
+          <button class="icon-btn" id="prev-day" aria-label="Previous day">‹</button>
+          <button class="icon-btn" id="next-day" aria-label="Next day">›</button>
+        </div>
+      </div>
+      <div class="meta">
+        <span id="progress"></span>
+        <span class="status busy" id="status" role="status">Opening your daybook</span>
+      </div>
+    </header>
+
+    <div class="banner" id="banner" hidden>
+      <span id="banner-text"></span>
+      <button class="btn" id="retry" type="button">Try again</button>
+    </div>
+
+    <div class="day-body">
+      <section aria-labelledby="h-tasks">
+        <div class="sec-head"><h2 id="h-tasks">Tasks</h2><small id="task-count"></small></div>
+        <ul class="tasks" id="tasks"></ul>
+        <form class="add" id="add-form" autocomplete="off">
+          <input type="text" id="new-task" placeholder="Add a task" aria-label="New task" enterkeyhint="done">
+          <button class="btn primary" type="submit">Add</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="h-notes">
+        <div class="sec-head"><h2 id="h-notes">Notes</h2><small>Type here, or write with Apple Pencil and iPad turns it into text</small></div>
+        <textarea id="notes" placeholder="How did the day go?" aria-labelledby="h-notes"></textarea>
+      </section>
+
+      <section aria-labelledby="h-ink" id="ink-section">
+        <div class="sec-head"><h2 id="h-ink">Handwriting</h2><small id="sheet-count"></small></div>
+        <div class="tools" role="toolbar" aria-label="Handwriting tools">
+          <div class="group">
+            <button class="seg" id="tool-pen" type="button" aria-pressed="true">Pen</button>
+            <button class="seg" id="tool-eraser" type="button" aria-pressed="false">Eraser</button>
+          </div>
+          <div class="group" id="swatches" aria-label="Ink colour"></div>
+          <div class="group" id="sizes" aria-label="Pen size"></div>
+          <div class="group">
+            <button class="seg" id="undo" type="button">Undo</button>
+          </div>
+          <label class="switch" for="finger"><input type="checkbox" id="finger"> Draw with finger</label>
+        </div>
+        <p class="hint" id="ink-hint">Apple Pencil writes on the page and your finger scrolls. Turn on Draw with finger to write without a Pencil.</p>
+        <div class="sheets" id="sheets"></div>
+        <div class="sheet-foot" style="margin-top:14px">
+          <button class="btn" id="add-sheet" type="button">Add a page</button>
+          <button class="btn" id="remove-sheet" type="button" hidden>Remove last page</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function(){
+'use strict';
+var $ = function(s){ return document.querySelector(s); };
+var pad = function(n){ return String(n).padStart(2,'0'); };
+var keyOf = function(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); };
+var parseKey = function(k){ var a=k.split('-').map(Number); return new Date(a[0],a[1]-1,a[2]); };
+var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var WIDTHS = [1.6, 2.8, 4.6];           // pen sizes, in page units (page is 1000 wide)
+var MAX_SHEETS = 12, SHEET_LIMIT = 230000;
+
+/* ---------- state ---------- */
+var cur = keyOf(new Date());
+var viewY = new Date().getFullYear(), viewM = new Date().getMonth();
+var index = {};                 // dateKey -> {t,d,n,i}
+var days = new Map();           // dateKey -> day
+var day = null;                 // the open day, null while loading
+var backend = null, loadToken = 0, undo = [];
+var tool = 'pen', color = 0, widthIdx = 1, finger = false;
+var hiddenAt = 0;
+
+/* ---------- stroke packing: delta + zigzag into printable characters ---------- */
+var A = [], AI = {};
+for (var c = 35; c <= 126 && A.length < 90; c++){ if (c !== 92) A.push(String.fromCharCode(c)); }
+A.forEach(function(ch,i){ AI[ch] = i; });
+function zz(v){ return v < 0 ? -v*2-1 : v*2; }
+function uz(v){ return (v & 1) ? -(v+1)/2 : v/2; }
+function en(v){ return v < 88 ? A[v] : A[88] + A[(v/88)|0] + A[v%88]; }
+function encodeStroke(st){
+  var s = A[st.c] + A[st.wi], px = 0, py = 0, p = st.pts;
+  for (var j = 0; j < p.length; j += 3){
+    s += en(zz(p[j]-px)) + en(zz(p[j+1]-py)) + A[p[j+2]];
+    px = p[j]; py = p[j+1];
+  }
+  return s;
+}
+function encode(strokes){ return strokes.map(encodeStroke).join('!'); }
+function decode(str){
+  if (!str || typeof str !== 'string') return [];
+  try {
+    return str.split('!').map(function(s){
+      var k = 2, px = 0, py = 0, pts = [];
+      function rd(){ var v = AI[s[k++]]; if (v === 88){ v = AI[s[k]]*88 + AI[s[k+1]]; k += 2; } return v; }
+      while (k < s.length){ px += uz(rd()); py += uz(rd()); pts.push(px, py, AI[s[k++]]); }
+      if (pts.some(function(n){ return typeof n !== 'number' || n !== n; })) return null;
+      return { c: Math.min(3, AI[s[0]]|0), wi: Math.min(2, AI[s[1]]|0), pts: pts };
+    }).filter(function(st){ return st && st.pts.length; });
+  } catch(e){ return []; }
+}
+
+/* ---------- storage ---------- */
+function withTimeout(p, ms){
+  return new Promise(function(res, rej){
+    var t = setTimeout(function(){ rej({code:'timeout'}); }, ms);
+    p.then(function(v){ clearTimeout(t); res(v); }, function(e){ clearTimeout(t); rej(e); });
+  });
+}
+var mem = new Map();
+var localBackend = {
+  kind: 'local',
+  get: function(id){
+    try { var v = localStorage.getItem('daybook:'+id); if (v) return Promise.resolve(JSON.parse(v)); } catch(e){}
+    return Promise.resolve(mem.get(id) || null);
+  },
+  set: function(id, v){
+    mem.set(id, v);
+    try { localStorage.setItem('daybook:'+id, JSON.stringify(v)); return Promise.resolve(); }
+    catch(e){ return Promise.reject({code:'local_failed'}); }
+  }
+};
+function idbBackend(idb){
+  function store(mode){ return idb.transaction('docs', mode).objectStore('docs'); }
+  function wrap(req){ return new Promise(function(res, rej){ req.onsuccess = function(){ res(req.result); }; req.onerror = function(){ rej({code:'local_failed'}); }; }); }
+  return {
+    kind: 'device',
+    get: function(id){ return wrap(store('readonly').get(id)).then(function(v){ return v || null; }); },
+    set: function(id, v){ return wrap(store('readwrite').put(v, id)); },
+    all: function(){
+      var st = store('readonly');
+      return Promise.all([wrap(st.getAllKeys()), wrap(st.getAll())]).then(function(r){
+        var out = {}; r[0].forEach(function(k, i){ out[k] = r[1][i]; }); return out;
+      });
+    }
+  };
+}
+function openIdb(){
+  return new Promise(function(res, rej){
+    var req;
+    try { req = indexedDB.open('daybook', 1); } catch(e){ rej(e); return; }
+    req.onupgradeneeded = function(){ req.result.createObjectStore('docs'); };
+    req.onsuccess = function(){ res(req.result); };
+    req.onerror = req.onblocked = function(){ rej({code:'local_failed'}); };
+  });
+}
+
+/* one write at a time per document, coalesced */
+var pending = new Map(), saveError = '';
+function save(id, value){
+  var p = pending.get(id) || { busy:false };
+  p.value = value; p.dirty = true;
+  clearTimeout(p.timer);
+  p.timer = setTimeout(function(){ flush(id); }, 700);
+  pending.set(id, p);
+  showStatus();
+}
+function flush(id){
+  var p = pending.get(id);
+  if (!p || !p.dirty || p.busy || !backend) return;
+  clearTimeout(p.timer);
+  p.busy = true; p.dirty = false;
+  var v = p.value;
+  var attempt = function(){ return backend.set(id, v); };
+  attempt().catch(function(e){
+    if (e && e.code === 'unavailable'){
+      return new Promise(function(r){ setTimeout(r, 600 + Math.random()*800); }).then(attempt);
+    }
+    throw e;
+  }).then(function(){ saveError = ''; }, function(e){
+    var code = e && e.code;
+    saveError = code === 'quota_exceeded' ? 'Storage is full. Clear some old handwriting to keep saving.'
+      : code === 'local_failed' ? 'This browser is not letting the page save. Changes last until you close it.'
+      : 'Could not save. Make any change to try again.';
+  }).then(function(){
+    p.busy = false;
+    if (p.dirty) flush(id);
+    showStatus();
+  });
+}
+function flushAll(){ pending.forEach(function(_, id){ flush(id); }); }
+function hasPending(){ var any = false; pending.forEach(function(p){ if (p.dirty || p.busy) any = true; }); return any; }
+function showStatus(){
+  var el = $('#status');
+  el.className = 'status';
+  if (!backend){ el.textContent = 'Opening your daybook'; el.classList.add('busy'); return; }
+  if (saveError){ el.textContent = saveError; el.classList.add('bad'); return; }
+  if (hasPending()){ el.textContent = 'Saving'; el.classList.add('busy'); return; }
+  el.textContent = 'Saved on this device';
+}
+
+/* ---------- loading ---------- */
+function loadIndex(){
+  return backend.get('index').then(function(doc){
+    index = (doc && doc.days && typeof doc.days === 'object') ? doc.days : {};
+  }).catch(function(){ /* calendar marks are a convenience; the day itself reports errors */ });
+}
+function openDay(key){
+  flushAll();
+  cur = key; undo = [];
+  var d = parseKey(key); viewY = d.getFullYear(); viewM = d.getMonth();
+  renderHeader(); renderCalendar();
+  $('#banner').hidden = true;
+  var token = ++loadToken;
+  if (days.has(key)){ day = days.get(key); setLoading(false); renderDay(); return Promise.resolve(); }
+  day = null; setLoading(true); renderDay();
+  return backend.get('d_' + key).then(function(doc){
+    var n = Math.max(1, Math.min(MAX_SHEETS, (doc && doc.sheets) | 0));
+    var reads = [];
+    for (var i = 0; i < n; i++) reads.push(backend.get('s_' + key + '_' + i));
+    return Promise.all(reads).then(function(sdocs){
+      if (token !== loadToken) return;
+      day = {
+        key: key, hasDoc: !!doc,
+        tasks: (doc && Array.isArray(doc.tasks) ? doc.tasks : []).map(function(t){
+          return { id: String(t.id || newId()), t: String(t.t || ''), d: !!t.d };
+        }),
+        notes: doc && typeof doc.notes === 'string' ? doc.notes : '',
+        sheets: sdocs.map(function(sd){ return { strokes: decode(sd && sd.s) }; })
+      };
+      days.set(key, day);
+      setLoading(false); renderDay();
+    });
+  }).catch(function(){
+    if (token !== loadToken) return;
+    $('#banner-text').textContent = 'This day could not be opened. Try again. Nothing has been changed.';
+    $('#banner').hidden = false;
+  });
+}
+function setLoading(on){ $('#main').classList.toggle('is-loading', on); }
+function newId(){ return Math.random().toString(36).slice(2, 10); }
+
+/* ---------- saving the open day ---------- */
+function saveDay(){
+  if (!day) return;
+  day.hasDoc = true;
+  save('d_' + day.key, {
+    tasks: day.tasks.map(function(t){ return { id:t.id, t:t.t, d:t.d }; }),
+    notes: day.notes, sheets: day.sheets.length, u: Date.now()
+  });
+  updateIndex();
+}
+function saveSheet(i){
+  if (!day) return;
+  save('s_' + day.key + '_' + i, { s: encode(day.sheets[i].strokes) });
+  if (!day.hasDoc) saveDay(); else updateIndex();
+}
+function updateIndex(){
+  var t = day.tasks.length, d = day.tasks.filter(function(x){ return x.d; }).length;
+  var n = day.notes.trim() ? 1 : 0;
+  var i = day.sheets.some(function(s){ return s.strokes.length; }) ? 1 : 0;
+  var next = (t || n || i) ? { t:t, d:d, n:n, i:i } : null;
+  var prev = index[day.key] || null;
+  if (JSON.stringify(prev) === JSON.stringify(next)) return;
+  if (next) index[day.key] = next; else delete index[day.key];
+  save('index', { days: JSON.parse(JSON.stringify(index)) });
+  renderCalendar();
+}
+
+/* ---------- calendar ---------- */
+function renderCalendar(){
+  $('#cal-title').textContent = MONTHS[viewM] + ' ' + viewY;
+  var grid = $('#grid'); grid.textContent = '';
+  var first = new Date(viewY, viewM, 1), today = keyOf(new Date());
+  for (var n = 0; n < 42; n++){
+    var d = new Date(viewY, viewM, 1 - first.getDay() + n), k = keyOf(d), info = index[k];
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'cell'; b.dataset.k = k;
+    if (d.getMonth() !== viewM) b.classList.add('out');
+    if (k === today) b.classList.add('today');
+    if (k === cur){ b.classList.add('sel'); b.setAttribute('aria-current', 'date'); }
+    var label = DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+    var num = document.createElement('span'); num.textContent = d.getDate(); b.appendChild(num);
+    var marks = document.createElement('span'); marks.className = 'marks';
+    if (info){
+      if (info.t){
+        var bar = document.createElement('i'); bar.className = 'bar';
+        var fill = document.createElement('b'); fill.style.width = Math.round(info.d / info.t * 100) + '%';
+        bar.appendChild(fill); marks.appendChild(bar);
+        label += ', ' + info.d + ' of ' + info.t + ' tasks done';
+      }
+      if (info.n || info.i){
+        var dot = document.createElement('i'); dot.className = 'dot'; marks.appendChild(dot);
+        label += ', has writing';
+      }
+    }
+    b.appendChild(marks); b.setAttribute('aria-label', label);
+    grid.appendChild(b);
+  }
+  var prefix = viewY + '-' + pad(viewM + 1) + '-', written = 0, done = 0, total = 0;
+  Object.keys(index).forEach(function(k){
+    if (k.indexOf(prefix) !== 0) return;
+    written++; done += index[k].d || 0; total += index[k].t || 0;
+  });
+  $('#stat-days').textContent = written;
+  $('#stat-tasks').textContent = done + ' / ' + total;
+  $('#goto-date').value = cur;
+}
+function shiftMonth(by){
+  var d = new Date(viewY, viewM + by, 1); viewY = d.getFullYear(); viewM = d.getMonth(); renderCalendar();
+}
+function shiftDay(by){
+  var d = parseKey(cur); d.setDate(d.getDate() + by); go(keyOf(d));
+}
+function go(key){
+  if (!backend || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
+  document.body.classList.remove('cal-open');
+  openDay(key);
+  $('#main').scrollTop = 0;
+}
+
+/* ---------- day header, tasks, notes ---------- */
+function renderHeader(){
+  var d = parseKey(cur), today = keyOf(new Date());
+  $('#weekday').textContent = DAYS[d.getDay()] + (cur === today ? ' · Today' : '');
+  $('#date-title').textContent = d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+}
+function renderProgress(){
+  var t = day ? day.tasks.length : 0, d = day ? day.tasks.filter(function(x){ return x.d; }).length : 0;
+  $('#progress').textContent = !day ? '' : t ? d + ' of ' + t + ' tasks done' : 'No tasks yet';
+  $('#task-count').textContent = t ? (t - d) + ' left' : '';
+}
+function renderTasks(){
+  var ul = $('#tasks'); ul.textContent = '';
+  if (!day || !day.tasks.length){
+    var li = document.createElement('li'); li.className = 'empty';
+    li.textContent = day ? 'Nothing planned for this day. Add your first task below.' : 'Opening this day';
+    ul.appendChild(li);
+  } else day.tasks.forEach(function(t){
+    var li = document.createElement('li'); if (t.d) li.className = 'done';
+    var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'done-' + t.id; cb.checked = t.d;
+    cb.setAttribute('aria-label', 'Done');
+    cb.addEventListener('change', function(){ t.d = cb.checked; li.classList.toggle('done', t.d); renderProgress(); saveDay(); });
+    var tx = document.createElement('input'); tx.type = 'text'; tx.id = 'task-' + t.id; tx.value = t.t;
+    tx.setAttribute('aria-label', 'Task');
+    tx.addEventListener('input', function(){ t.t = tx.value; saveDay(); });
+    tx.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); $('#new-task').focus(); } });
+    var del = document.createElement('button'); del.type = 'button'; del.className = 'del'; del.textContent = '×';
+    del.setAttribute('aria-label', 'Delete task');
+    del.addEventListener('click', function(){
+      day.tasks = day.tasks.filter(function(x){ return x !== t; }); renderTasks(); saveDay();
+    });
+    li.appendChild(cb); li.appendChild(tx); li.appendChild(del); ul.appendChild(li);
+  });
+  renderProgress();
+}
+function growNotes(){ var n = $('#notes'); n.style.height = 'auto'; n.style.height = Math.max(120, n.scrollHeight + 2) + 'px'; }
+function renderDay(){
+  renderTasks();
+  $('#notes').value = day ? day.notes : '';
+  growNotes();
+  buildSheets();
+}
+
+/* ---------- handwriting ---------- */
+var canvases = [], active = null, inkColors = [];
+function readInk(){
+  var cs = getComputedStyle(document.documentElement);
+  inkColors = [0,1,2,3].map(function(i){ return cs.getPropertyValue('--ink' + i).trim() || '#222'; });
+}
+function buildSheets(){
+  var wrap = $('#sheets'); wrap.textContent = ''; canvases = [];
+  var n = day ? day.sheets.length : 1;
+  for (var i = 0; i < n; i++) (function(i){
+    var box = document.createElement('div');
+    var head = document.createElement('div'); head.className = 'sheet-head';
+    var lab = document.createElement('span'); lab.textContent = 'Page ' + (i + 1);
+    var clr = document.createElement('button'); clr.type = 'button'; clr.className = 'link'; clr.textContent = 'Clear this page';
+    clr.addEventListener('click', function(){ clearSheet(i); });
+    head.appendChild(lab); head.appendChild(clr);
+    var sheet = document.createElement('div'); sheet.className = 'sheet';
+    var cv = document.createElement('canvas'); cv.setAttribute('aria-label', 'Handwriting page ' + (i + 1));
+    sheet.appendChild(cv); box.appendChild(head); box.appendChild(sheet); wrap.appendChild(box);
+    canvases.push(cv); bindCanvas(cv, i);
+  })(i);
+  $('#sheet-count').textContent = n + (n === 1 ? ' page' : ' pages');
+  var last = day && day.sheets[n - 1];
+  $('#remove-sheet').hidden = !(day && n > 1 && last.strokes.length === 0);
+  $('#add-sheet').hidden = n >= MAX_SHEETS;
+  sizeAll();
+}
+function sizeAll(){
+  readInk();
+  canvases.forEach(function(cv, i){
+    var w = cv.getBoundingClientRect().width; if (!w) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 3);
+    var pw = Math.round(w * dpr), ph = Math.round(pw * 1.3);
+    if (cv.width !== pw || cv.height !== ph){ cv.width = pw; cv.height = ph; }
+    redraw(i);
+  });
+}
+function redraw(i){
+  var cv = canvases[i]; if (!cv) return;
+  var ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height);
+  if (!day || !day.sheets[i]) return;
+  day.sheets[i].strokes.forEach(function(st){ drawStroke(ctx, cv, st); });
+}
+function prep(ctx, st){ ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ctx.fillStyle = inkColors[st.c] || inkColors[0]; }
+function lw(cv, st, pa, pb){ return WIDTHS[st.wi] * (0.4 + (pa + pb) / 18) * cv.width / 1000; }
+function drawDot(ctx, cv, st){
+  var k = cv.width / 2000, p = st.pts;
+  prep(ctx, st); ctx.beginPath(); ctx.arc(p[0]*k, p[1]*k, lw(cv, st, p[2], p[2]) / 2, 0, Math.PI * 2); ctx.fill();
+}
+function drawSeg(ctx, cv, st, i){            // i is the index of the newest point, i >= 1
+  var k = cv.width / 2000, p = st.pts, a = (i-1)*3, b = i*3;
+  var mx = (p[a] + p[b]) / 2 * k, my = (p[a+1] + p[b+1]) / 2 * k;
+  ctx.lineWidth = lw(cv, st, p[a+2], p[b+2]);
+  ctx.beginPath();
+  if (i >= 2){
+    var z = (i-2)*3;
+    ctx.moveTo((p[z] + p[a]) / 2 * k, (p[z+1] + p[a+1]) / 2 * k);
+    ctx.quadraticCurveTo(p[a]*k, p[a+1]*k, mx, my);
+  } else { ctx.moveTo(p[a]*k, p[a+1]*k); ctx.lineTo(mx, my); }
+  ctx.stroke();
+}
+function drawTail(ctx, cv, st){
+  var k = cv.width / 2000, p = st.pts, n = p.length / 3; if (n < 2) return;
+  var a = (n-2)*3, b = (n-1)*3;
+  ctx.lineWidth = lw(cv, st, p[b+2], p[b+2]);
+  ctx.beginPath(); ctx.moveTo((p[a] + p[b]) / 2 * k, (p[a+1] + p[b+1]) / 2 * k); ctx.lineTo(p[b]*k, p[b+1]*k); ctx.stroke();
+}
+function drawStroke(ctx, cv, st){
+  var n = st.pts.length / 3; prep(ctx, st);
+  if (n === 1){ drawDot(ctx, cv, st); return; }
+  for (var i = 1; i < n; i++) drawSeg(ctx, cv, st, i);
+  drawTail(ctx, cv, st);
+}
+function pointOf(ev){
+  var r = active.rect;
+  return [
+    Math.max(0, Math.min(2000, Math.round((ev.clientX - r.left) / r.width * 2000))),
+    Math.max(0, Math.min(2600, Math.round((ev.clientY - r.top) / r.height * 2600)))
+  ];
+}
+function addPoint(ev){
+  var st = active.st, p = st.pts, q = pointOf(ev), n = p.length;
+  var pr = ev.pointerType === 'pen' ? Math.round(Math.max(0.05, Math.min(1, ev.pressure || 0.5)) * 9) : 5;
+  if (n){ var dx = q[0] - p[n-3], dy = q[1] - p[n-2]; if (dx*dx + dy*dy < 5) return; }
+  p.push(q[0], q[1], pr);
+  var ctx = active.cv.getContext('2d'); prep(ctx, st);
+  if (p.length === 3) drawDot(ctx, active.cv, st); else drawSeg(ctx, active.cv, st, p.length / 3 - 1);
+}
+function segDist2(px, py, ax, ay, bx, by){
+  var vx = bx - ax, vy = by - ay, l = vx*vx + vy*vy;
+  var t = l ? Math.max(0, Math.min(1, ((px-ax)*vx + (py-ay)*vy) / l)) : 0;
+  var dx = px - ax - t*vx, dy = py - ay - t*vy; return dx*dx + dy*dy;
+}
+function eraseAt(ev){
+  var q = pointOf(ev), list = day.sheets[active.i].strokes, R2 = 26 * 26, hit = false;
+  for (var s = list.length - 1; s >= 0; s--){
+    var p = list[s].pts, touched = false;
+    if (p.length === 3) touched = segDist2(q[0], q[1], p[0], p[1], p[0], p[1]) < R2;
+    for (var j = 3; j < p.length && !touched; j += 3){
+      touched = segDist2(q[0], q[1], p[j-3], p[j-2], p[j], p[j+1]) < R2;
+    }
+    if (touched){ active.erased.push({ st: list[s], idx: s }); list.splice(s, 1); hit = true; }
+  }
+  if (hit) redraw(active.i);
+}
+function bindCanvas(cv, i){
+  cv.addEventListener('pointerdown', function(e){
+    if (!day || active) return;
+    if (e.pointerType === 'touch' && !finger) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch(_){}
+    active = { id: e.pointerId, i: i, cv: cv, rect: cv.getBoundingClientRect() };
+    if (tool === 'pen'){ active.st = { c: color, wi: widthIdx, pts: [] }; addPoint(e); }
+    else { active.erased = []; eraseAt(e); }
+  });
+  cv.addEventListener('pointermove', function(e){
+    if (!active || e.pointerId !== active.id) return;
+    var evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    if (!evs.length) evs = [e];
+    for (var n = 0; n < evs.length; n++){ if (active.st) addPoint(evs[n]); else eraseAt(evs[n]); }
+  });
+  var end = function(e){
+    if (!active || e.pointerId !== active.id) return;
+    var a = active; active = null;
+    if (a.st){
+      if (!a.st.pts.length) return;
+      var ctx = cv.getContext('2d'); prep(ctx, a.st); drawTail(ctx, cv, a.st);
+      var list = day.sheets[a.i].strokes;
+      if (encode(list).length + encodeStroke(a.st).length > SHEET_LIMIT){
+        redraw(a.i); toast('This page is full. Add a page to keep writing.'); return;
+      }
+      list.push(a.st); undo.push({ i: a.i, add: a.st });
+      saveSheet(a.i); syncSheetButtons();
+    } else if (a.erased.length){
+      undo.push({ i: a.i, erased: a.erased }); saveSheet(a.i); syncSheetButtons();
+    }
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  /* A Pencil stroke must not scroll the page; a finger still scrolls unless finger drawing is on. */
+  var guard = function(e){
+    if (finger){ e.preventDefault(); return; }
+    for (var n = 0; n < e.changedTouches.length; n++){
+      if (e.changedTouches[n].touchType === 'stylus'){ e.preventDefault(); return; }
+    }
+  };
+  cv.addEventListener('touchstart', guard, { passive: false });
+  cv.addEventListener('touchmove', guard, { passive: false });
+  cv.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+}
+function syncSheetButtons(){
+  if (!day) return;
+  var n = day.sheets.length;
+  $('#remove-sheet').hidden = !(n > 1 && day.sheets[n-1].strokes.length === 0);
+}
+function clearSheet(i){
+  if (!day || !day.sheets[i].strokes.length) return;
+  undo.push({ i: i, cleared: day.sheets[i].strokes });
+  day.sheets[i].strokes = [];
+  redraw(i); saveSheet(i); syncSheetButtons();
+  toast('Page cleared. Press Undo to bring it back.');
+}
+function doUndo(){
+  if (!day) return;
+  var op = undo.pop();
+  while (op && !day.sheets[op.i]) op = undo.pop();
+  if (!op){ toast('Nothing to undo.'); return; }
+  var list = day.sheets[op.i].strokes;
+  if (op.add){ var at = list.indexOf(op.add); if (at >= 0) list.splice(at, 1); }
+  else if (op.erased){ for (var n = op.erased.length - 1; n >= 0; n--) list.splice(Math.min(op.erased[n].idx, list.length), 0, op.erased[n].st); }
+  else if (op.cleared){ day.sheets[op.i].strokes = op.cleared.concat(list); }
+  redraw(op.i); saveSheet(op.i); syncSheetButtons();
+}
+
+/* ---------- toolbar ---------- */
+function press(sel, on){ $(sel).setAttribute('aria-pressed', on ? 'true' : 'false'); }
+function setTool(t){ tool = t; press('#tool-pen', t === 'pen'); press('#tool-eraser', t === 'eraser'); }
+function buildToolbar(){
+  var names = ['Ink', 'Blue', 'Red', 'Green'], sw = $('#swatches');
+  names.forEach(function(name, i){
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'sw'; b.id = 'ink-' + i;
+    b.setAttribute('aria-label', name + ' ink'); b.setAttribute('aria-pressed', i === color ? 'true' : 'false');
+    var dot = document.createElement('i'); dot.style.background = 'var(--ink' + i + ')'; b.appendChild(dot);
+    b.addEventListener('click', function(){
+      color = i; setTool('pen');
+      names.forEach(function(_, j){ press('#ink-' + j, j === i); });
+    });
+    sw.appendChild(b);
+  });
+  var sizeNames = ['Fine', 'Medium', 'Bold'], sz = $('#sizes');
+  sizeNames.forEach(function(name, i){
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'sz'; b.id = 'size-' + i;
+    b.setAttribute('aria-label', name + ' pen'); b.setAttribute('aria-pressed', i === widthIdx ? 'true' : 'false');
+    var dot = document.createElement('i'); dot.style.width = dot.style.height = (5 + i * 5) + 'px'; b.appendChild(dot);
+    b.addEventListener('click', function(){
+      widthIdx = i; setTool('pen');
+      sizeNames.forEach(function(_, j){ press('#size-' + j, j === i); });
+    });
+    sz.appendChild(b);
+  });
+  $('#tool-pen').addEventListener('click', function(){ setTool('pen'); });
+  $('#tool-eraser').addEventListener('click', function(){ setTool('eraser'); });
+  $('#undo').addEventListener('click', doUndo);
+  try { finger = localStorage.getItem('daybook:finger') === '1'; } catch(e){}
+  $('#finger').checked = finger; $('#ink-section').classList.toggle('finger', finger);
+  $('#finger').addEventListener('change', function(){
+    finger = $('#finger').checked; $('#ink-section').classList.toggle('finger', finger);
+    try { localStorage.setItem('daybook:finger', finger ? '1' : '0'); } catch(e){}
+  });
+  $('#add-sheet').addEventListener('click', function(){
+    if (!day || day.sheets.length >= MAX_SHEETS) return;
+    day.sheets.push({ strokes: [] }); saveDay(); buildSheets();
+    canvases[canvases.length - 1].scrollIntoView({ block: 'center' });
+  });
+  $('#remove-sheet').addEventListener('click', function(){
+    if (!day || day.sheets.length < 2 || day.sheets[day.sheets.length - 1].strokes.length) return;
+    day.sheets.pop(); saveDay(); buildSheets();
+  });
+}
+var toastTimer;
+function toast(msg){
+  var t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.hidden = true; }, 3200);
+}
+
+/* ---------- wiring ---------- */
+$('#grid').addEventListener('click', function(e){ var b = e.target.closest('.cell'); if (b) go(b.dataset.k); });
+$('#prev-month').addEventListener('click', function(){ shiftMonth(-1); });
+$('#next-month').addEventListener('click', function(){ shiftMonth(1); });
+$('#prev-day').addEventListener('click', function(){ shiftDay(-1); });
+$('#next-day').addEventListener('click', function(){ shiftDay(1); });
+$('#goto-today').addEventListener('click', function(){ go(keyOf(new Date())); });
+$('#goto-date').addEventListener('change', function(){ if (this.value) go(this.value); });
+$('#cal-open').addEventListener('click', function(){ document.body.classList.add('cal-open'); });
+$('#cal-close').addEventListener('click', function(){ document.body.classList.remove('cal-open'); });
+$('#scrim').addEventListener('click', function(){ document.body.classList.remove('cal-open'); });
+$('#retry').addEventListener('click', function(){ openDay(cur); });
+$('#add-form').addEventListener('submit', function(e){
+  e.preventDefault();
+  var inp = $('#new-task'), text = inp.value.trim();
+  if (!day || !text) return;
+  day.tasks.push({ id: newId(), t: text, d: false });
+  inp.value = ''; renderTasks(); saveDay(); inp.focus();
+});
+$('#notes').addEventListener('input', function(){ if (!day) return; day.notes = this.value; growNotes(); saveDay(); });
+
+var raf = 0;
+function queueSize(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(sizeAll); }
+if (window.ResizeObserver) new ResizeObserver(queueSize).observe($('#sheets')); else window.addEventListener('resize', queueSize);
+try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', queueSize); } catch(e){}
+new MutationObserver(queueSize).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden){ hiddenAt = Date.now(); flushAll(); return; }
+  /* Coming back after a while: pick up anything written on another device. */
+  if (backend && backend.kind === 'remote' && hiddenAt && Date.now() - hiddenAt > 60000 && !hasPending() && !active){
+    days.clear(); loadIndex().then(function(){ openDay(cur); });
+  }
+});
+window.addEventListener('pagehide', flushAll);
+
+buildToolbar(); readInk(); renderHeader(); renderCalendar(); setLoading(true); renderDay(); showStatus();
+
+/* ---------- backup ---------- */
+var DOC_ID = /^(index|d_\d{4}-\d{2}-\d{2}|s_\d{4}-\d{2}-\d{2}_\d{1,2})$/;
+function allDocs(){
+  if (backend.all) return backend.all();
+  var out = {};
+  try { for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k.indexOf('daybook:') === 0 && DOC_ID.test(k.slice(8))) out[k.slice(8)] = JSON.parse(localStorage.getItem(k)); } } catch(e){}
+  return Promise.resolve(out);
+}
+function whenSaved(){
+  flushAll();
+  return new Promise(function(res){ (function wait(){ if (hasPending()) setTimeout(wait, 100); else res(); })(); });
+}
+$('#backup-save').addEventListener('click', function(){
+  if (!backend) return;
+  whenSaved().then(allDocs).then(function(docs){
+    var json = JSON.stringify({ app: 'daybook', v: 1, exported: new Date().toISOString(), docs: docs });
+    var name = 'daybook-backup-' + keyOf(new Date()) + '.json';
+    var file = null;
+    try { file = new File([json], name, { type: 'application/json' }); } catch(e){}
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })){
+      navigator.share({ files: [file] }).catch(function(){});
+      return;
+    }
+    var url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    var a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  }).catch(function(){ toast('The backup could not be made. Try again.'); });
+});
+$('#backup-load').addEventListener('click', function(){ $('#backup-file').click(); });
+$('#backup-file').addEventListener('change', function(){
+  var f = this.files && this.files[0]; this.value = '';
+  if (!f || !backend) return;
+  f.text().then(function(text){
+    var data = JSON.parse(text);
+    if (!data || data.app !== 'daybook' || !data.docs || typeof data.docs !== 'object') throw new Error('not a backup');
+    var ids = Object.keys(data.docs).filter(function(id){ return DOC_ID.test(id) && id !== 'index' && data.docs[id] && typeof data.docs[id] === 'object'; });
+    var inc = data.docs.index && data.docs.index.days;
+    return whenSaved().then(function(){
+      return ids.reduce(function(p, id){ return p.then(function(){ return backend.set(id, data.docs[id]); }); }, Promise.resolve());
+    }).then(function(){
+      if (inc && typeof inc === 'object') Object.keys(inc).forEach(function(k){ if (/^\d{4}-\d{2}-\d{2}$/.test(k)) index[k] = inc[k]; });
+      return backend.set('index', { days: index });
+    }).then(function(){
+      days.clear(); openDay(cur);
+      toast('Backup restored: ' + ids.filter(function(id){ return id[0] === 'd'; }).length + ' days.');
+    });
+  }).catch(function(){ toast('That file is not a Daybook backup, or it could not be read.'); });
+});
+
+/* ---------- start: storage lives on this device ---------- */
+openIdb().then(function(idb){ return idbBackend(idb); }, function(){ return localBackend; }).then(function(b){
+  backend = b; showStatus();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
+  return loadIndex().then(function(){ return openDay(cur); });
+});
+
+if ('serviceWorker' in navigator){
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+}
+})();
+</script>
+</body>
+</html>

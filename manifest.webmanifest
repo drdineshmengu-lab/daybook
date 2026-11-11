@@ -1,0 +1,15 @@
+{
+  "name": "Daybook",
+  "short_name": "Daybook",
+  "description": "A daily diary for tasks, notes and handwriting.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eef2f1",
+  "theme_color": "#0e6f69",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
